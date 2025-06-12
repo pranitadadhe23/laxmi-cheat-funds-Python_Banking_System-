@@ -1,23 +1,20 @@
 from PyQt5.QtWidgets import (
     QApplication, QWidget, QPushButton, QLabel, QVBoxLayout,
-    QInputDialog, QMessageBox, QSpacerItem, QSizePolicy, QHBoxLayout
+    QInputDialog, QMessageBox, QSpacerItem, QSizePolicy
 )
 from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QFont
-from Banking.account import SavingAccount, CurrentAccount
-from Banking.transaction import deposit, withdraw
-
-# Dictionary to store all created accounts
-accounts = {}
+from Banking.database import init_db, create_account_db, get_account_db, update_balance_db
 
 class BankApp(QWidget):
     def __init__(self):
         super().__init__()
 
+        init_db()  # Initialize DB table
+        self.user = None
+
         self.setWindowTitle("Laxmi Cheat Funds")
         self.setGeometry(100, 100, 450, 400)
-
-        self.user = None  # Currently logged-in user
 
         self.setStyleSheet("""
             QWidget {
@@ -30,6 +27,7 @@ class BankApp(QWidget):
                 padding: 10px;
                 border-radius: 8px;
                 font-size: 14px;
+                width: 200px;
             }
             QPushButton:hover {
                 background-color: #3700B3;
@@ -43,44 +41,31 @@ class BankApp(QWidget):
 
         self.layout = QVBoxLayout()
         self.layout.setSpacing(15)
-        self.layout.setAlignment(Qt.AlignTop)
+        self.layout.setAlignment(Qt.AlignCenter)
+
+        self.init_homepage()
+
+        self.setLayout(self.layout)
+
+    def init_homepage(self):
+        self.clear_layout()
 
         self.title = QLabel("🏦 Welcome to Laxmi Cheat Funds")
         self.title.setAlignment(Qt.AlignCenter)
         self.title.setFont(QFont("Arial", 16, QFont.Bold))
         self.layout.addWidget(self.title)
 
-        # Initial Home Screen Buttons
         self.create_btn = QPushButton("➕ Create Account")
         self.create_btn.clicked.connect(self.create_account)
-        self.layout.addWidget(self.wrap_button(self.create_btn))
+        self.layout.addWidget(self.create_btn, alignment=Qt.AlignCenter)
 
         self.login_btn = QPushButton("🔐 Login")
         self.login_btn.clicked.connect(self.login)
-        self.layout.addWidget(self.wrap_button(self.login_btn))
+        self.layout.addWidget(self.login_btn, alignment=Qt.AlignCenter)
 
         self.exit_btn = QPushButton("❌ Exit")
         self.exit_btn.clicked.connect(self.close)
-        self.layout.addWidget(self.wrap_button(self.exit_btn))
-
-        self.setLayout(self.layout)
-
-    # Wrap a button in a horizontal layout to center it
-    def wrap_button(self, btn):
-        btn.setFixedWidth(200)
-        h_layout = QHBoxLayout()
-        h_layout.addStretch()
-        h_layout.addWidget(btn)
-        h_layout.addStretch()
-        container = QWidget()
-        container.setLayout(h_layout)
-        return container
-
-    # Create centered button dynamically with event
-    def create_button(self, label, func):
-        btn = QPushButton(label)
-        btn.clicked.connect(func)
-        return self.wrap_button(btn)
+        self.layout.addWidget(self.exit_btn, alignment=Qt.AlignCenter)
 
     def create_account(self):
         name, ok = QInputDialog.getText(self, "Create Account", "Enter your name:")
@@ -95,24 +80,22 @@ class BankApp(QWidget):
         if not ok:
             return
 
-        if acc_type.lower() == 'savings':
-            acc = SavingAccount(name, amount)
-        elif acc_type.lower() == 'current':
-            acc = CurrentAccount(name, amount)
-        else:
-            QMessageBox.warning(self, "Error", "Invalid account type.")
-            return
-
-        accounts[acc.account_number] = acc
-        QMessageBox.information(self, "Success", f"Account created! Number: {acc.account_number}")
+        acc_no = create_account_db(name, acc_type.lower(), amount)
+        QMessageBox.information(self, "Success", f"Account created!\nAccount Number: {acc_no}")
 
     def login(self):
         acc_no, ok = QInputDialog.getInt(self, "Login", "Enter account number:")
         if not ok:
             return
 
-        if acc_no in accounts:
-            self.user = accounts[acc_no]
+        account = get_account_db(acc_no)
+        if account:
+            self.user = {
+                "account_number": account[0],
+                "name": account[1],
+                "type": account[2],
+                "balance": account[3]
+            }
             self.show_dashboard()
         else:
             QMessageBox.warning(self, "Error", "Account not found.")
@@ -120,7 +103,7 @@ class BankApp(QWidget):
     def show_dashboard(self):
         self.clear_layout()
 
-        welcome = QLabel(f"👤 Hello, {self.user.name} (Acc No: {self.user.account_number})")
+        welcome = QLabel(f"👤 Hello, {self.user['name']} (Acc No: {self.user['account_number']})")
         welcome.setAlignment(Qt.AlignCenter)
         welcome.setFont(QFont("Arial", 14, QFont.Bold))
         self.layout.addWidget(welcome)
@@ -129,56 +112,50 @@ class BankApp(QWidget):
         self.layout.addWidget(self.create_button("📥 Deposit", self.deposit_money))
         self.layout.addWidget(self.create_button("📤 Withdraw", self.withdraw_money))
 
-        if isinstance(self.user, SavingAccount):
+        if self.user['type'] == 'savings':
             self.layout.addWidget(self.create_button("📈 Add Interest", self.add_interest))
 
         self.layout.addSpacerItem(QSpacerItem(20, 20, QSizePolicy.Minimum, QSizePolicy.Expanding))
-        self.layout.addWidget(self.create_button("🔓 Logout", self.logout))
+        self.layout.addWidget(self.create_button("🔓 Logout", self.logout), alignment=Qt.AlignCenter)
+
+    def create_button(self, label, func):
+        btn = QPushButton(label)
+        btn.clicked.connect(func)
+        btn.setFixedWidth(200)
+        return btn
 
     def check_balance(self):
-        QMessageBox.information(self, "Balance", f"₹{self.user.get_balance():.2f}")
+        QMessageBox.information(self, "Balance", f"₹{self.user['balance']:.2f}")
 
     def deposit_money(self):
         amount, ok = QInputDialog.getDouble(self, "Deposit", "Amount:")
         if ok:
-            deposit(self.user, amount)
+            self.user['balance'] += amount
+            update_balance_db(self.user['account_number'], self.user['balance'])
             QMessageBox.information(self, "Success", f"Deposited ₹{amount:.2f}")
 
     def withdraw_money(self):
         amount, ok = QInputDialog.getDouble(self, "Withdraw", "Amount:")
         if ok:
-            withdraw(self.user, amount)
-            QMessageBox.information(self, "Success", f"Withdrew ₹{amount:.2f}")
+            if self.user['balance'] >= amount:
+                self.user['balance'] -= amount
+                update_balance_db(self.user['account_number'], self.user['balance'])
+                QMessageBox.information(self, "Success", f"Withdrew ₹{amount:.2f}")
+            else:
+                QMessageBox.warning(self, "Error", "Insufficient balance.")
 
     def add_interest(self):
         months, ok = QInputDialog.getInt(self, "Interest", "Enter number of months:")
         if ok:
-            interest = self.user.intrest_rate * months * self.user.get_balance()
-            self.user.deposit(interest)
-            QMessageBox.information(self, "Interest Added", f"₹{interest:.2f} interest credited.")
+            rate = 0.04  # 4% yearly interest
+            interest = rate * months * self.user['balance']
+            self.user['balance'] += interest
+            update_balance_db(self.user['account_number'], self.user['balance'])
+            QMessageBox.information(self, "Interest Added", f"₹{interest:.2f} credited.")
 
     def logout(self):
         self.user = None
-        self.clear_layout()
-
-        # Rebuild the initial home screen
-        self.title = QLabel("🏦 Welcome to Laxmi Cheat Funds")
-        self.title.setAlignment(Qt.AlignCenter)
-        self.title.setFont(QFont("Arial", 16, QFont.Bold))
-        self.layout.addWidget(self.title)
-
-        self.create_btn = QPushButton("➕ Create Account")
-        self.create_btn.clicked.connect(self.create_account)
-        self.layout.addWidget(self.wrap_button(self.create_btn))
-
-        self.login_btn = QPushButton("🔐 Login")
-        self.login_btn.clicked.connect(self.login)
-        self.layout.addWidget(self.wrap_button(self.login_btn))
-
-        self.exit_btn = QPushButton("❌ Exit")
-        self.exit_btn.clicked.connect(self.close)
-        self.layout.addWidget(self.wrap_button(self.exit_btn))
-
+        self.init_homepage()
 
     def clear_layout(self):
         while self.layout.count():
@@ -187,7 +164,7 @@ class BankApp(QWidget):
             if widget:
                 widget.deleteLater()
 
-# Run the application
+# Run app
 if __name__ == '__main__':
     app = QApplication([])
     window = BankApp()
