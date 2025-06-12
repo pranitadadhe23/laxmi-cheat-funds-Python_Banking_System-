@@ -7,14 +7,14 @@ This application allows users to create savings or current accounts, log in, dep
 
 ## 📁 Project Structure
 
-📂 banking
-├── init.py # Package initializer
-├── account.py # Contains SavingAccount and CurrentAccount classes
-├── transaction.py # Handles deposit and withdraw functions
-├── database.py # Database logic (account table creation, insert, fetch)
-📄 main.py # Main PyQt5 GUI application
-📄 bank.db # SQLite database storing account data
-📄 README.md # Project documentation
+📂 banking  
+├── init.py # Package initializer  
+├── account.py # Contains SavingAccount and CurrentAccount classes  
+├── transaction.py # Handles deposit and withdraw functions  
+├── database.py # Database logic (account table creation, insert, fetch)  
+📄 main.py # Main PyQt5 GUI application  
+📄 bank.db # SQLite database storing account data  
+📄 README.md # Project documentation  
 
 
 ## 🚀 Features
